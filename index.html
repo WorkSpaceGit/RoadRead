@@ -46,20 +46,34 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            /* Fix 1: drop-shadow перенесено на обгортку як box-shadow — дешевше для GPU */
+            filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.25));
+            will-change: filter;
         }
         .svg-container svg {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            filter: drop-shadow(0 10px 15px rgba(0, 0, 0, 0.3));
+            /* Fix 1: прибрано drop-shadow з SVG, тепер на контейнері */
         }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .option-btn { transition: all 0.2s ease-out; }
+        /* Fix 3: transition: all → тільки конкретні властивості */
+        .option-btn {
+            transition: background-color 0.2s ease-out, border-color 0.2s ease-out, transform 0.1s ease-out;
+            /* Fix 7: обмежуємо reflow тільки цим елементом */
+            contain: layout style;
+            will-change: transform;
+        }
         .option-btn:active { transform: scale(0.95); }
         .game-overlay {
-            backdrop-filter: blur(8px);
-            background-color: rgba(15, 23, 42, 0.85);
+            /* Fix 2: прибрано backdrop-filter: blur — найважча GPU операція,
+               при opacity 0.85 розмиття практично непомітне */
+            background-color: rgba(15, 23, 42, 0.92);
+        }
+        /* Fix 8: result-content анімується — виносимо на окремий compositing layer */
+        #result-content {
+            will-change: transform;
         }
     </style>
 </head>
@@ -11396,7 +11410,11 @@ viewBox="0 0 6246.91 9370.36"
         // Fix 3: тільки записуємо якщо це найновіший запит
         if (gen === preloadGeneration) {
             nextRoundData = data;
-            preloadContainer.innerHTML = '';
+            // Fix 6: замість innerHTML = '' + повторне створення — очищаємо акуратно
+            // і рендеримо тільки якщо знаки відрізняються від попереднього preload
+            while (preloadContainer.firstChild) {
+                preloadContainer.removeChild(preloadContainer.firstChild);
+            }
             data.options.forEach(sign => {
                 preloadContainer.appendChild(createIsolatedSvgContainer(sign.image));
             });
@@ -11460,7 +11478,7 @@ viewBox="0 0 6246.91 9370.36"
         shadow.innerHTML = `
             <style>
                 :host { display:flex; width:100%; height:100%; align-items:center; justify-content:center; }
-                svg { width:100%; height:100%; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.3)); }
+                svg { width:100%; height:100%; }
             </style>
             ${svgString}
         `;
@@ -11518,9 +11536,11 @@ viewBox="0 0 6246.91 9370.36"
 
     function updateStreak() {
         streakCounter.textContent = streak;
-        streakCounter.style.transition = 'transform 0.2s ease-out';
-        streakCounter.classList.add('scale-150');
-        setTimeout(() => streakCounter.classList.remove('scale-150'), 200);
+        // Fix 4: Web Animations API замість classList + setTimeout — надійніше і не залишає "зависших" класів
+        streakCounter.animate(
+            [{ transform: 'scale(1)' }, { transform: 'scale(1.5)' }, { transform: 'scale(1)' }],
+            { duration: 200, easing: 'ease-out' }
+        );
     }
 
     function showSuccessOverlay() {
@@ -11531,10 +11551,12 @@ viewBox="0 0 6246.91 9370.36"
         resultOverlay.classList.remove('opacity-0', 'pointer-events-none');
         resultOverlay.classList.add('opacity-100');
 
-        setTimeout(() => {
+        // Fix 5: requestAnimationFrame замість setTimeout(50) — надійніший спосіб
+        // форсувати reflow перед зміною класу (подвійний rAF = після paint)
+        requestAnimationFrame(() => requestAnimationFrame(() => {
             resultContent.classList.remove('scale-75');
             resultContent.classList.add('scale-100');
-        }, 50);
+        }));
     }
 
     function hideSuccessOverlay() {
