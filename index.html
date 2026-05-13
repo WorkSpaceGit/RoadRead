@@ -11445,6 +11445,10 @@ viewBox="0 0 6246.91 9370.36"
         // Оновлюємо питання
         questionText.textContent = correctSign.description;
 
+        // Прибираємо transition — знаки мають з'явитись без анімації поки під оверлеєм
+        optionsGrid.style.transition = 'none';
+        questionText.style.transition = 'none';
+
         // Анімація появи — правильне скидання через Web Animations API
         optionsGrid.classList.remove('animate-pop-in');
         optionsGrid.getAnimations().forEach(a => a.cancel());
@@ -11487,13 +11491,16 @@ viewBox="0 0 6246.91 9370.36"
 
     function renderOptions() {
         optionsGrid.innerHTML = '';
+        // DocumentFragment: збираємо всі кнопки в пам'яті → один reflow замість 4-х
+        const fragment = document.createDocumentFragment();
         currentRoundSigns.forEach(sign => {
             const btn = document.createElement('button');
             btn.className = 'option-btn bg-card hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-2xl p-6 flex items-center justify-center cursor-pointer relative shadow-lg';
             btn.appendChild(createIsolatedSvgContainer(sign.image, 'pointer-events-none'));
             btn.addEventListener('click', () => handleChoice(sign, btn));
-            optionsGrid.appendChild(btn);
+            fragment.appendChild(btn);
         });
+        optionsGrid.appendChild(fragment);
     }
 
     function handleChoice(selectedSign, btnElement) {
@@ -11516,11 +11523,12 @@ viewBox="0 0 6246.91 9370.36"
             showSuccessOverlay();
 
             setTimeout(() => {
-                hideSuccessOverlay();
-                // Використовуємо preload-дані (вже готові)
+                // Спочатку рендеримо новий раунд (знаки невидимі під оверлеєм)
                 const data = nextRoundData;
                 nextRoundData = null;
-                setTimeout(() => startRound(data), 300);
+                startRound(data);
+                // Потім прибираємо оверлей — гравець бачить вже готові знаки
+                hideSuccessOverlay();
             }, 2200);
 
         } else {
@@ -11530,7 +11538,8 @@ viewBox="0 0 6246.91 9370.36"
             if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
 
             btnElement.classList.add('animate-shake', 'border-red-500', 'bg-red-900/20');
-            setTimeout(() => btnElement.classList.remove('animate-shake'), 400);
+            // animationend: прибираємо клас точно після завершення анімації — без таймера
+            btnElement.addEventListener('animationend', () => btnElement.classList.remove('animate-shake'), { once: true });
         }
     }
 
@@ -11548,11 +11557,13 @@ viewBox="0 0 6246.91 9370.36"
         resultSvg.appendChild(createIsolatedSvgContainer(correctSign.image));
         resultName.textContent = `${correctSign.number} — ${correctSign.name}`;
 
+        // Ховаємо нижній шар — гравець більше не бачить старі знаки
+        optionsGrid.style.opacity = '0';
+        questionText.style.opacity = '0';
+
         resultOverlay.classList.remove('opacity-0', 'pointer-events-none');
         resultOverlay.classList.add('opacity-100');
 
-        // Fix 5: requestAnimationFrame замість setTimeout(50) — надійніший спосіб
-        // форсувати reflow перед зміною класу (подвійний rAF = після paint)
         requestAnimationFrame(() => requestAnimationFrame(() => {
             resultContent.classList.remove('scale-75');
             resultContent.classList.add('scale-100');
@@ -11565,6 +11576,14 @@ viewBox="0 0 6246.91 9370.36"
 
         resultContent.classList.remove('scale-100');
         resultContent.classList.add('scale-75');
+
+        // Повертаємо нижній шар плавно — нові знаки вже там, моргання немає
+        requestAnimationFrame(() => {
+            optionsGrid.style.transition = 'opacity 0.25s ease-out';
+            questionText.style.transition = 'opacity 0.25s ease-out';
+            optionsGrid.style.opacity = '1';
+            questionText.style.opacity = '1';
+        });
     }
 
 
