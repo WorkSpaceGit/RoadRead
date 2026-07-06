@@ -46,32 +46,24 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            /* Fix 1: drop-shadow перенесено на обгортку як box-shadow — дешевше для GPU */
             filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.25));
-            will-change: filter;
         }
         .svg-container svg {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            /* Fix 1: прибрано drop-shadow з SVG, тепер на контейнері */
         }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        /* Fix 3: transition: all → тільки конкретні властивості */
         .option-btn {
             transition: background-color 0.2s ease-out, border-color 0.2s ease-out, transform 0.1s ease-out;
-            /* Fix 7: обмежуємо reflow тільки цим елементом */
             contain: layout style;
             will-change: transform;
         }
         .option-btn:active { transform: scale(0.95); }
         .game-overlay {
-            /* Fix 2: прибрано backdrop-filter: blur — найважча GPU операція,
-               при opacity 0.85 розмиття практично непомітне */
-            background-color: rgba(15, 23, 42, 0.92);
+            background-color: rgba(25, 25, 25, 0.92);
         }
-        /* Fix 8: result-content анімується — виносимо на окремий compositing layer */
         #result-content {
             will-change: transform;
         }
@@ -82,7 +74,7 @@
     <!-- Header / HUD -->
     <header class="flex justify-between items-center p-5 max-w-2xl w-full mx-auto">
         <div class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400">
-            ЗНАКИ
+            Читай знаки
         </div>
         <div class="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-full shadow-lg">
             <span class="text-xl">🔥</span>
@@ -115,7 +107,7 @@
     </div>
 
     <script>
-    // ================================================================
+// ================================================================
     // БАЗА ДАНИХ ЗНАКІВ
     // Щоб додати новий знак — просто вставте об'єкт у масив нижче.
     // Формат:
@@ -11304,32 +11296,23 @@ viewBox="0 0 6246.91 9370.36"
     // ================================================================
 
 
-    // ================================================================
     // НАЛАШТУВАННЯ
-    // ================================================================
-    const HISTORY_SIZE = Math.max(4, Math.floor(signsData.length * 0.25)); // 25% від бази, мін 4
+    const HISTORY_SIZE = Math.max(4, Math.floor(signsData.length * 0.25));
 
-
-    // ================================================================
     // СТАН ГРИ
-    // ================================================================
     let correctSign = null;
     let currentRoundSigns = [];
     let streak = 0;
     let isWaitingForNextRound = false;
 
-    // History: черга нещодавно показаних знаків (як правильних)
-    const recentCorrect = [];   // зберігає number останніх правильних знаків
-    const recentDistractors = []; // зберігає number нещодавніх дистракторів
+    const recentCorrect = [];
+    const recentDistractors = [];
 
-    // Preload: дані наступного раунду, підготовлені заздалегідь
-    let nextRoundData = null;   // { correctSign, options: [sign, ...] }
-    let preloadContainer = null; // прихований div для prerender SVG
+    let nextRoundData = null;
+    let preloadContainer = null;
 
 
-    // ================================================================
     // DOM
-    // ================================================================
     const questionText    = document.getElementById('question-text');
     const optionsGrid     = document.getElementById('options-grid');
     const streakCounter   = document.getElementById('streak-counter');
@@ -11339,9 +11322,7 @@ viewBox="0 0 6246.91 9370.36"
     const resultName      = document.getElementById('result-name');
 
 
-    // ================================================================
     // УТИЛІТИ
-    // ================================================================
     function shuffleArray(arr) {
         const a = [...arr];
         for (let i = a.length - 1; i > 0; i--) {
@@ -11387,11 +11368,7 @@ viewBox="0 0 6246.91 9370.36"
     }
 
 
-    // ================================================================
-    // PRELOAD СИСТЕМA
-    // Поки гравець відповідає — рендеримо SVG наступного раунду
-    // у прихований контейнер, щоб браузер їх вже розпарсив.
-    // ================================================================
+    // PRELOAD: рендеримо SVG наступного раунду у прихований контейнер завчасно
     function ensurePreloadContainer() {
         if (!preloadContainer) {
             preloadContainer = document.createElement('div');
@@ -11400,18 +11377,14 @@ viewBox="0 0 6246.91 9370.36"
         }
     }
 
-    let preloadGeneration = 0; // Fix 3: generation counter to avoid stale preload data
+    let preloadGeneration = 0;
 
     function preloadNextRound() {
         ensurePreloadContainer();
         const gen = ++preloadGeneration;
         const data = buildRoundData();
-
-        // Fix 3: тільки записуємо якщо це найновіший запит
         if (gen === preloadGeneration) {
             nextRoundData = data;
-            // Fix 6: замість innerHTML = '' + повторне створення — очищаємо акуратно
-            // і рендеримо тільки якщо знаки відрізняються від попереднього preload
             while (preloadContainer.firstChild) {
                 preloadContainer.removeChild(preloadContainer.firstChild);
             }
@@ -11422,9 +11395,7 @@ viewBox="0 0 6246.91 9370.36"
     }
 
 
-    // ================================================================
     // ІГРОВА ЛОГІКА
-    // ================================================================
     function startRound(data) {
         isWaitingForNextRound = false;
 
@@ -11433,31 +11404,24 @@ viewBox="0 0 6246.91 9370.36"
         correctSign = round.correctSign;
         currentRoundSigns = round.options;
 
-        // Фіксуємо в history
         pushHistory(recentCorrect, HISTORY_SIZE, correctSign.number);
-        // Fix 5: зберігаємо дистракторів щоб уникнути їх повторення
         round.options.forEach(s => {
             if (s.number !== correctSign.number) {
                 pushHistory(recentDistractors, HISTORY_SIZE * 3, s.number);
             }
         });
 
-        // Оновлюємо питання
         questionText.textContent = correctSign.description;
 
-        // Прибираємо transition — знаки мають з'явитись без анімації поки під оверлеєм
         optionsGrid.style.transition = 'none';
         questionText.style.transition = 'none';
 
-        // Анімація появи — правильне скидання через Web Animations API
         optionsGrid.classList.remove('animate-pop-in');
         optionsGrid.getAnimations().forEach(a => a.cancel());
         optionsGrid.classList.add('animate-pop-in');
 
         renderOptions();
 
-        // Одразу починаємо preload наступного раунду у фоні
-        // requestIdleCallback — якщо підтримується, інакше setTimeout
         if (typeof requestIdleCallback !== 'undefined') {
             requestIdleCallback(() => preloadNextRound(), { timeout: 500 });
         } else {
@@ -11465,11 +11429,7 @@ viewBox="0 0 6246.91 9370.36"
         }
     }
 
-    // ================================================================
-    // SVG ІЗОЛЯЦІЯ — Shadow DOM
-    // Кожен SVG рендериться у власному Shadow Root, щоб CSS-класи
-    // (.a, .b тощо) не конфліктували між різними знаками на сторінці.
-    // ================================================================
+    // SVG ІЗОЛЯЦІЯ — Shadow DOM щоб CSS-класи (.a, .b) не конфліктували між знаками
     function createIsolatedSvgContainer(svgString, extraClass = '') {
         const wrapper = document.createElement('div');
         wrapper.className = `svg-container ${extraClass}`.trim();
@@ -11491,7 +11451,6 @@ viewBox="0 0 6246.91 9370.36"
 
     function renderOptions() {
         optionsGrid.innerHTML = '';
-        // DocumentFragment: збираємо всі кнопки в пам'яті → один reflow замість 4-х
         const fragment = document.createDocumentFragment();
         currentRoundSigns.forEach(sign => {
             const btn = document.createElement('button');
@@ -11515,7 +11474,6 @@ viewBox="0 0 6246.91 9370.36"
 
             if (navigator.vibrate) navigator.vibrate(50);
 
-            // Анімація: ховаємо неправильні кнопки
             optionsGrid.querySelectorAll('button').forEach(b => {
                 if (b !== btnElement) b.classList.add('animate-fade-out');
             });
@@ -11523,11 +11481,9 @@ viewBox="0 0 6246.91 9370.36"
             showSuccessOverlay();
 
             setTimeout(() => {
-                // Спочатку рендеримо новий раунд (знаки невидимі під оверлеєм)
                 const data = nextRoundData;
                 nextRoundData = null;
                 startRound(data);
-                // Потім прибираємо оверлей — гравець бачить вже готові знаки
                 hideSuccessOverlay();
             }, 2200);
 
@@ -11538,14 +11494,12 @@ viewBox="0 0 6246.91 9370.36"
             if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
 
             btnElement.classList.add('animate-shake', 'border-red-500', 'bg-red-900/20');
-            // animationend: прибираємо клас точно після завершення анімації — без таймера
             btnElement.addEventListener('animationend', () => btnElement.classList.remove('animate-shake'), { once: true });
         }
     }
 
     function updateStreak() {
         streakCounter.textContent = streak;
-        // Fix 4: Web Animations API замість classList + setTimeout — надійніше і не залишає "зависших" класів
         streakCounter.animate(
             [{ transform: 'scale(1)' }, { transform: 'scale(1.5)' }, { transform: 'scale(1)' }],
             { duration: 200, easing: 'ease-out' }
@@ -11557,7 +11511,6 @@ viewBox="0 0 6246.91 9370.36"
         resultSvg.appendChild(createIsolatedSvgContainer(correctSign.image));
         resultName.textContent = `${correctSign.number} — ${correctSign.name}`;
 
-        // Ховаємо нижній шар — гравець більше не бачить старі знаки
         optionsGrid.style.opacity = '0';
         questionText.style.opacity = '0';
 
@@ -11577,7 +11530,6 @@ viewBox="0 0 6246.91 9370.36"
         resultContent.classList.remove('scale-100');
         resultContent.classList.add('scale-75');
 
-        // Повертаємо нижній шар плавно — нові знаки вже там, моргання немає
         requestAnimationFrame(() => {
             optionsGrid.style.transition = 'opacity 0.25s ease-out';
             questionText.style.transition = 'opacity 0.25s ease-out';
@@ -11587,9 +11539,6 @@ viewBox="0 0 6246.91 9370.36"
     }
 
 
-    // ================================================================
-    // СТАРТ
-    // ================================================================
     startRound();
 
     </script>
