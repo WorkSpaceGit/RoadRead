@@ -107,17 +107,9 @@
     </div>
 
     <script>
-// ================================================================
-    // БАЗА ДАНИХ ЗНАКІВ
-    // Щоб додати новий знак — просто вставте об'єкт у масив нижче.
-    // Формат:
-    // {
-    //   number: "1.1",
-    //   name: "Небезпечний поворот праворуч",
-    //   description: "Попереджає про...",
-    //   image: `<svg ... preserveAspectRatio="xMidYMid meet">...</svg>`
-    // },
-    // ================================================================
+    // Щоб додати знак: { number, name, description, image: `<svg ...>` }
+
+    // ===================== ПОЧАТОК БАЗИ ДАНИХ ЗНАКІВ =====================
     const signsData = [
 {
   number: "1.1",
@@ -11291,25 +11283,23 @@ viewBox="0 0 6246.91 9370.36"
 </svg>`
 },
     ];
-    // ================================================================
-    // КІНЕЦЬ БАЗИ ДАНИХ
-    // ================================================================
-
+    // ===================== ЗАВЕРШЕННЯ БАЗИ ДАНИХ ЗНАКІВ =====================
 
     // НАЛАШТУВАННЯ
     const HISTORY_SIZE = Math.max(4, Math.floor(signsData.length * 0.25));
 
     // СТАН ГРИ
-    let correctSign = null;
-    let currentRoundSigns = [];
-    let streak = 0;
-    let isWaitingForNextRound = false;
-
-    const recentCorrect = [];
-    const recentDistractors = [];
-
-    let nextRoundData = null;
-    let preloadContainer = null;
+    const state = {
+        correctSign:          null,
+        currentRoundSigns:    [],
+        streak:               0,
+        isWaitingForNextRound: false,
+        recentCorrect:        [],
+        recentDistractors:    [],
+        nextRoundData:        null,
+        preloadContainer:     null,
+        preloadGeneration:    0,
+    };
 
 
     // DOM
@@ -11337,24 +11327,17 @@ viewBox="0 0 6246.91 9370.36"
         if (queue.length > maxSize) queue.shift();
     }
 
-    // Вибрати знак, якого не було нещодавно
     function pickCorrectSign() {
-        // Виключаємо нещодавні правильні відповіді (якщо база достатньо велика)
-        let pool = signsData.filter(s => !recentCorrect.includes(s.number));
-        if (pool.length < 1) pool = signsData; // fallback якщо база мала
+        const excluded = new Set(state.recentCorrect);
+        let pool = signsData.filter(s => !excluded.has(s.number));
+        if (pool.length < 1) pool = signsData;
         return pool[Math.floor(Math.random() * pool.length)];
     }
 
-    // Вибрати 3 дистрактори: уникаємо нещодавніх правильних і нещодавніх дистракторів
     function pickDistractors(correct) {
-        // Повний список без правильного знаку
         let pool = signsData.filter(s => s.number !== correct.number);
-
-        // Намагаємось уникнути нещодавніх (але не жертвуємо різноманітністю)
-        const avoided = new Set([...recentCorrect, ...recentDistractors]);
+        const avoided = new Set([...state.recentCorrect, ...state.recentDistractors]);
         const freshPool = pool.filter(s => !avoided.has(s.number));
-
-        // Якщо свіжих достатньо — беремо з них, інакше з повного пулу
         const source = freshPool.length >= 3 ? freshPool : pool;
         return shuffleArray(source).slice(0, 3);
     }
@@ -11369,49 +11352,39 @@ viewBox="0 0 6246.91 9370.36"
 
 
     // PRELOAD: рендеримо SVG наступного раунду у прихований контейнер завчасно
-    function ensurePreloadContainer() {
-        if (!preloadContainer) {
-            preloadContainer = document.createElement('div');
-            preloadContainer.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;';
-            document.body.appendChild(preloadContainer);
-        }
-    }
-
-    let preloadGeneration = 0;
-
     function preloadNextRound() {
-        ensurePreloadContainer();
-        const gen = ++preloadGeneration;
+        if (!state.preloadContainer) {
+            state.preloadContainer = document.createElement('div');
+            state.preloadContainer.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;';
+            document.body.appendChild(state.preloadContainer);
+        }
+        const gen = ++state.preloadGeneration;
         const data = buildRoundData();
-        if (gen === preloadGeneration) {
-            nextRoundData = data;
-            while (preloadContainer.firstChild) {
-                preloadContainer.removeChild(preloadContainer.firstChild);
-            }
-            data.options.forEach(sign => {
-                preloadContainer.appendChild(createIsolatedSvgContainer(sign.image));
-            });
+        if (gen === state.preloadGeneration) {
+            state.nextRoundData = data;
+            state.preloadContainer.replaceChildren(
+                ...data.options.map(sign => createIsolatedSvgContainer(sign.image))
+            );
         }
     }
 
 
     // ІГРОВА ЛОГІКА
     function startRound(data) {
-        isWaitingForNextRound = false;
+        state.isWaitingForNextRound = false;
 
-        // Якщо є заздалегідь підготовлені дані — використовуємо їх
         const round = data || buildRoundData();
-        correctSign = round.correctSign;
-        currentRoundSigns = round.options;
+        state.correctSign = round.correctSign;
+        state.currentRoundSigns = round.options;
 
-        pushHistory(recentCorrect, HISTORY_SIZE, correctSign.number);
+        pushHistory(state.recentCorrect, HISTORY_SIZE, state.correctSign.number);
         round.options.forEach(s => {
-            if (s.number !== correctSign.number) {
-                pushHistory(recentDistractors, HISTORY_SIZE * 3, s.number);
+            if (s.number !== state.correctSign.number) {
+                pushHistory(state.recentDistractors, HISTORY_SIZE * 3, s.number);
             }
         });
 
-        questionText.textContent = correctSign.description;
+        questionText.textContent = state.correctSign.description;
 
         optionsGrid.style.transition = 'none';
         questionText.style.transition = 'none';
@@ -11452,7 +11425,7 @@ viewBox="0 0 6246.91 9370.36"
     function renderOptions() {
         optionsGrid.innerHTML = '';
         const fragment = document.createDocumentFragment();
-        currentRoundSigns.forEach(sign => {
+        state.currentRoundSigns.forEach(sign => {
             const btn = document.createElement('button');
             btn.className = 'option-btn bg-card hover:bg-slate-700 border-2 border-slate-700 hover:border-slate-500 rounded-2xl p-6 flex items-center justify-center cursor-pointer relative shadow-lg';
             btn.appendChild(createIsolatedSvgContainer(sign.image, 'pointer-events-none'));
@@ -11463,13 +11436,13 @@ viewBox="0 0 6246.91 9370.36"
     }
 
     function handleChoice(selectedSign, btnElement) {
-        if (isWaitingForNextRound) return;
+        if (state.isWaitingForNextRound) return;
 
-        const isCorrect = selectedSign.number === correctSign.number;
+        const isCorrect = selectedSign.number === state.correctSign.number;
 
         if (isCorrect) {
-            isWaitingForNextRound = true;
-            streak++;
+            state.isWaitingForNextRound = true;
+            state.streak++;
             updateStreak();
 
             if (navigator.vibrate) navigator.vibrate(50);
@@ -11481,14 +11454,14 @@ viewBox="0 0 6246.91 9370.36"
             showSuccessOverlay();
 
             setTimeout(() => {
-                const data = nextRoundData;
-                nextRoundData = null;
+                const data = state.nextRoundData;
+                state.nextRoundData = null;
                 startRound(data);
                 hideSuccessOverlay();
             }, 2200);
 
         } else {
-            streak = 0;
+            state.streak = 0;
             updateStreak();
 
             if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
@@ -11499,7 +11472,7 @@ viewBox="0 0 6246.91 9370.36"
     }
 
     function updateStreak() {
-        streakCounter.textContent = streak;
+        streakCounter.textContent = state.streak;
         streakCounter.animate(
             [{ transform: 'scale(1)' }, { transform: 'scale(1.5)' }, { transform: 'scale(1)' }],
             { duration: 200, easing: 'ease-out' }
@@ -11508,8 +11481,8 @@ viewBox="0 0 6246.91 9370.36"
 
     function showSuccessOverlay() {
         resultSvg.innerHTML = '';
-        resultSvg.appendChild(createIsolatedSvgContainer(correctSign.image));
-        resultName.textContent = `${correctSign.number} — ${correctSign.name}`;
+        resultSvg.appendChild(createIsolatedSvgContainer(state.correctSign.image));
+        resultName.textContent = `${state.correctSign.number} — ${state.correctSign.name}`;
 
         optionsGrid.style.opacity = '0';
         questionText.style.opacity = '0';
@@ -11517,10 +11490,11 @@ viewBox="0 0 6246.91 9370.36"
         resultOverlay.classList.remove('opacity-0', 'pointer-events-none');
         resultOverlay.classList.add('opacity-100');
 
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            resultContent.classList.remove('scale-75');
-            resultContent.classList.add('scale-100');
-        }));
+        // getComputedStyle примушує браузер застосувати стилі синхронно —
+        // чистіша альтернатива подвійному requestAnimationFrame
+        getComputedStyle(resultContent).transform;
+        resultContent.classList.remove('scale-75');
+        resultContent.classList.add('scale-100');
     }
 
     function hideSuccessOverlay() {
